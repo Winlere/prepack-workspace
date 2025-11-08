@@ -1,0 +1,3 @@
+[submodule "prepack"]
+	path = prepack
+	url = git@github.com:Winlere/prepacking.git
