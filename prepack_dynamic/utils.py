@@ -124,8 +124,8 @@ def load_model_and_tokenizer(
     # Load tokenizer and model
     if base_model == "llama1b":
         path = "princeton-nlp/Sheared-LLaMA-1.3B"
-    elif base_model == "llama2":
-        path = "/path/to/llama2"
+    elif base_model == "llama2.7b":
+        path = "princeton-nlp/Sheared-LLaMA-2.7B"
 
     tokenizer = AutoTokenizer.from_pretrained(path)
     tokenizer.pad_token = "[PAD]"

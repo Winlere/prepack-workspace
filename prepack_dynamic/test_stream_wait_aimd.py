@@ -14,8 +14,6 @@ from profiling_time_and_memory import (
     TTFT_with_baseline,
 )
 
-COMBINED_CSV_PATH = "/u/wzhan/prepack-workspace/dataset/combined/mmlu_azure_ts.csv"
-
 
 def load_records(csv_path: str) -> List[Dict]:
     records = []
@@ -25,7 +23,7 @@ def load_records(csv_path: str) -> List[Dict]:
             t = float(row["timestamp"])
             text = row["text"]
             records.append({"timestamp": t, "text": text})
-            
+
     records.sort(key=lambda r: r["timestamp"]) # could be removed if the csv is already sorted by timestamp
     return records
 
@@ -92,6 +90,7 @@ def simulate_static_wait(
     device,
     fixed_wait_window: float,
     method: str = "prepacking",
+    max_tokens: int = None,
 ) -> float:
     """
     Static prepack：fixed wait window fixed_wait_window (seconds),
@@ -100,6 +99,9 @@ def simulate_static_wait(
     TTFT here includes:
       - waiting time in the queue
       - batch prefill + generate-1-token time (via TTFT_* functions)
+    
+    Args:
+        max_tokens: Maximum total tokens allowed in a batch. If None, no limit.
     """
     processor = PrePackProcessor(tokenizer)
     ttfts = []
@@ -120,8 +122,17 @@ def simulate_static_wait(
 
         # collect requests that arrive within the window
         batch_indices = []
+        total_tokens = 0
         j = i
         while j < n and records[j]["timestamp"] <= batch_start:
+            # Check max_tokens limit if specified
+            if max_tokens is not None:
+                # Tokenize the current request to count tokens
+                request_tokens = len(tokenizer(records[j]["text"]).input_ids)
+                if total_tokens + request_tokens > max_tokens:
+                    # Adding this request would exceed max_tokens, stop collecting
+                    break
+                total_tokens += request_tokens
             batch_indices.append(j)
             j += 1
 
@@ -134,10 +145,11 @@ def simulate_static_wait(
 
         # print current batch information
         batch_id += 1
+        token_info = f", tokens={total_tokens}" if max_tokens is not None else ""
         print(
             f"[STATIC] batch={batch_id}, "
             f"window={fixed_wait_window:.4f}s, "
-            f"num_requests={len(batch_indices)}"
+            f"num_requests={len(batch_indices)}{token_info}"
         )
 
         # Run one batch with TTFT metric, batch latency includes (prefill + generate first token)
@@ -204,6 +216,7 @@ def simulate_aimd_wait(
     method: str = "prepacking",
     alpha: float = 0.01,
     beta: float = 0.5,
+    max_tokens: int = None,
 ) -> float:
     """
     AIMD prepack：wait window is dynamically controlled by AIMDWindowController,
@@ -212,6 +225,9 @@ def simulate_aimd_wait(
     TTFT here includes:
       - waiting time in the queue
       - batch prefill + generate-1-token time (via TTFT_* functions)
+    
+    Args:
+        max_tokens: Maximum total tokens allowed in a batch. If None, no limit.
     """
     processor = PrePackProcessor(tokenizer)
     controller = AIMDWindowController(
@@ -239,8 +255,17 @@ def simulate_aimd_wait(
         batch_start = server_time + wait_window
 
         batch_indices = []
+        total_tokens = 0
         j = i
         while j < n and records[j]["timestamp"] <= batch_start:
+            # Check max_tokens limit if specified
+            if max_tokens is not None:
+                # Tokenize the current request to count tokens
+                request_tokens = len(tokenizer(records[j]["text"]).input_ids)
+                if total_tokens + request_tokens > max_tokens:
+                    # Adding this request would exceed max_tokens, stop collecting
+                    break
+                total_tokens += request_tokens
             batch_indices.append(j)
             j += 1
 
@@ -252,10 +277,11 @@ def simulate_aimd_wait(
 
         # print current batch information (using current window)
         batch_id += 1
+        token_info = f", tokens={total_tokens}" if max_tokens is not None else ""
         print(
             f"[AIMD] batch={batch_id}, "
             f"wait_window={wait_window:.4f}s, "
-            f"num_requests={len(batch_indices)}"
+            f"num_requests={len(batch_indices)}{token_info}"
         )
 
         # Run one batch with TTFT metric, batch latency includes (prefill + generate first token)
@@ -286,15 +312,16 @@ def simulate_aimd_wait(
 
 if __name__ == "__main__":
     # 1. load timestamp + text data
+    COMBINED_CSV_PATH = "../dataset/combined/mmlu_azure_ts.csv"
     records = load_records(COMBINED_CSV_PATH)
     print(f"Loaded {len(records)} records from {COMBINED_CSV_PATH}")
 
     # 2. load model and tokenizer
-    model, tokenizer = load_model_and_tokenizer(base_model="llama1b", loadbit=4)
+    model, tokenizer = load_model_and_tokenizer(base_model="llama2.7b", loadbit=4)
     device = model.device
 
     # 3. TEST：static prepack
-    static_wait = 0.2  
+    static_wait = 0.1
     avg_ttft_static = simulate_static_wait(
         records,
         model,
@@ -302,6 +329,7 @@ if __name__ == "__main__":
         device,
         fixed_wait_window=static_wait,
         method="prepacking",
+        max_tokens=2048,
     )
     print(f"[STATIC] fixed_wait={static_wait:.3f}s, avg per-input TTFT={avg_ttft_static:.4f}s")
 
@@ -311,12 +339,13 @@ if __name__ == "__main__":
         model,
         tokenizer,
         device,
-        init_wait=0.2,   # initial wait window
-        min_wait=0.1,     # minimum wait window (as long as there is a request)
-        max_wait=0.4,     # maximum wait window
+        init_wait=0.2,  # initial wait window
+        min_wait=0.05,  # minimum wait window (as long as there is a request)
+        max_wait=0.4,  # maximum wait window
         target_ttft=0.3,  # target per-input TTFT, adjust according to your needs
         method="prepacking",
-        alpha=0.05,       # when latency < target, wait += alpha
-        beta=0.5,         # when latency >= target, wait *= beta
+        alpha=0.05,  # when latency < target, wait += alpha
+        beta=0.5,  # when latency >= target, wait *= beta
+        max_tokens=2048,
     )
     print(f"[AIMD] avg per-input TTFT={avg_ttft_aimd:.4f}s")
