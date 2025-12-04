@@ -14,6 +14,8 @@ from profiling_time_and_memory import (
     TTFT_with_baseline,
 )
 
+COMBINED_CSV_PATH = "/u/wzhan/prepack-workspace/dataset/combined/mmlu_azure_ts_scaled_4.csv"
+
 
 def load_records(csv_path: str) -> List[Dict]:
     records = []
@@ -23,7 +25,7 @@ def load_records(csv_path: str) -> List[Dict]:
             t = float(row["timestamp"])
             text = row["text"]
             records.append({"timestamp": t, "text": text})
-
+            
     records.sort(key=lambda r: r["timestamp"]) # could be removed if the csv is already sorted by timestamp
     return records
 
@@ -90,7 +92,7 @@ def simulate_static_wait(
     device,
     fixed_wait_window: float,
     method: str = "prepacking",
-    max_tokens: int = None,
+    max_requests_per_batch: int = 64,
 ) -> float:
     """
     Static prepack：fixed wait window fixed_wait_window (seconds),
@@ -99,9 +101,6 @@ def simulate_static_wait(
     TTFT here includes:
       - waiting time in the queue
       - batch prefill + generate-1-token time (via TTFT_* functions)
-    
-    Args:
-        max_tokens: Maximum total tokens allowed in a batch. If None, no limit.
     """
     processor = PrePackProcessor(tokenizer)
     ttfts = []
@@ -125,19 +124,14 @@ def simulate_static_wait(
         # fixed wait window
         batch_start = server_time + fixed_wait_window
 
-        # collect requests that arrive within the window
+        # collect requests that arrive within the window (with a hard cap)
         batch_indices = []
-        total_tokens = 0
         j = i
-        while j < n and records[j]["timestamp"] <= batch_start:
-            # Check max_tokens limit if specified
-            if max_tokens is not None:
-                # Tokenize the current request to count tokens
-                request_tokens = len(tokenizer(records[j]["text"]).input_ids)
-                if total_tokens + request_tokens > max_tokens:
-                    # Adding this request would exceed max_tokens, stop collecting
-                    break
-                total_tokens += request_tokens
+        while (
+            j < n
+            and records[j]["timestamp"] <= batch_start
+            and len(batch_indices) < max_requests_per_batch
+        ):
             batch_indices.append(j)
             j += 1
 
@@ -157,11 +151,10 @@ def simulate_static_wait(
 
         # print current batch information
         batch_id += 1
-        token_info = f", tokens={total_tokens}" if max_tokens is not None else ""
         print(
             f"[STATIC] batch={batch_id}, "
             f"window={fixed_wait_window:.4f}s, "
-            f"num_requests={len(batch_indices)}{token_info}"
+            f"num_requests={len(batch_indices)}"
         )
 
         # Run one batch with TTFT metric, batch latency includes (prefill + generate first token)
@@ -221,6 +214,179 @@ class AIMDWindowController:
         return self.wait_window
 
 
+class AIMDSizeController:
+    """
+    AIMD controller on batch size (number of requests per batch):
+      - if backlog_after_batch > current_size: size += alpha  (additive increase)
+      - else:                                    size *= beta  (multiplicative decrease)
+      - clamp to [min_size, max_size]
+    """
+
+    def __init__(self, init_size, min_size, max_size, alpha=1.0, beta=0.5):
+        self.init_size = int(init_size)
+        self.min_size = int(min_size)
+        self.max_size = int(max_size)
+        self.alpha = float(alpha)
+        self.beta = float(beta)
+        self.batch_size = max(self.min_size, min(self.init_size, self.max_size))
+
+    def update(self, backlog_after_batch: int) -> int:
+        if backlog_after_batch > self.batch_size:
+            self.batch_size += self.alpha
+        else:
+            self.batch_size *= self.beta
+
+        self.batch_size = int(max(self.min_size, min(self.batch_size, self.max_size)))
+        if self.batch_size < 1:
+            self.batch_size = 1
+        return self.batch_size
+
+
+def simulate_size_aimd_wait_advanced(
+    records: List[Dict],
+    model,
+    tokenizer,
+    device,
+    init_size: int,
+    min_size: int,
+    max_size: int,
+    method: str = "prepacking",
+    alpha: float = 1.0,
+    beta: float = 0.5,
+    gamma: float = 0.1,
+    tau_low: float = 0.25,
+    tau_high: float = 0.35,
+    max_requests_per_batch: int = 64,
+    backlog_hi_factor: float = 2.0,
+    backlog_lo_factor: float = 0.5,
+) -> float:
+    """
+    Advanced size-based AIMD batching with smoothed TTFT_p95, hysteresis band, and backlog-aware logic.
+
+    - Maintain desired batch size N_t in [min_size, max_size].
+    - For each batch (epoch t):
+        * Form a batch using at most N_t requests (plus hard cap max_requests_per_batch).
+        * Compute per-input TTFTs and TTFT_p95 for this batch.
+        * Update smoothed signal S_t = EWMA_gamma(TTFT_p95).
+        * Compute backlog_after at batch_finish.
+        * Update N_{t+1}:
+              if S_t <= tau_low and backlog_after > backlog_hi_factor * N_t:
+                    N_{t+1} = min(N_max, N_t + alpha)          (AI, high utilization)
+              elif S_t >= tau_high and backlog_after < backlog_lo_factor * N_t:
+                    N_{t+1} = max(N_min, ceil(beta * N_t))     (MD, low backlog)
+              else:
+                    N_{t+1} = N_t                              (stable / conflicting signals)
+    """
+    processor = PrePackProcessor(tokenizer)
+
+    desired_size = max(min_size, min(init_size, max_size))
+    S_t = None  # smoothed TTFT signal
+
+    ttfts = []
+    i = 0
+    server_time = 0.0
+    n = len(records)
+    batch_id = 0
+
+    while i < n:
+        # Ensure server_time is at least the arrival of the next unserved request
+        arrival = records[i]["timestamp"]
+        if arrival > server_time:
+            server_time = arrival
+
+        # Backlog at this time (capped)
+        queued_indices = []
+        j = i
+        while (
+            j < n
+            and records[j]["timestamp"] <= server_time
+            and len(queued_indices) < max_requests_per_batch
+        ):
+            queued_indices.append(j)
+            j += 1
+
+        if not queued_indices:
+            i += 1
+            continue
+
+        actual_batch_size = max(1, min(len(queued_indices), desired_size, max_requests_per_batch))
+        batch_indices = queued_indices[:actual_batch_size]
+        batch_texts = [records[k]["text"] for k in batch_indices]
+
+        batch_id += 1
+        print(
+            f"[SIZE-AIMD-ADV] batch={batch_id}, "
+            f"desired_size={desired_size}, "
+            f"backlog_before={len(queued_indices)}, "
+            f"actual_batch_size={len(batch_indices)}"
+        )
+
+        batch_start = server_time
+        batch_latency = run_batch_with_metric(
+            batch_texts,
+            model,
+            tokenizer,
+            device,
+            method=method,
+            metric="ttft",
+            processor=processor,
+        )
+        batch_finish = batch_start + batch_latency
+
+        # Per-request TTFTs for this batch
+        batch_ttfts = []
+        for k in batch_indices:
+            arrival_k = records[k]["timestamp"]
+            ttft_k = batch_finish - arrival_k
+            ttfts.append(ttft_k)
+            batch_ttfts.append(ttft_k)
+
+        if not batch_ttfts:
+            i = batch_indices[-1] + 1
+            server_time = batch_finish
+            continue
+
+        # Compute TTFT_p95 for this batch
+        ttft_p95 = float(np.percentile(batch_ttfts, 95))
+
+        # Update smoothed signal S_t (EWMA)
+        if S_t is None:
+            S_t = ttft_p95
+        else:
+            S_t = (1.0 - gamma) * S_t + gamma * ttft_p95
+
+        # Compute backlog_after at batch_finish
+        backlog_after = 0
+        k = batch_indices[-1] + 1
+        while k < n and records[k]["timestamp"] <= batch_finish:
+            backlog_after += 1
+            k += 1
+
+        # Backlog-aware hysteresis-based AIMD update on desired_size
+        old_size = desired_size
+        if S_t <= tau_low and backlog_after > backlog_hi_factor * desired_size:
+            # Latency is good and backlog is high: be more aggressive
+            desired_size = min(max_size, desired_size + alpha)
+        elif S_t >= tau_high and backlog_after < backlog_lo_factor * desired_size:
+            # Latency is bad and backlog is low: shrink batch size
+            desired_size = max(min_size, int(np.ceil(beta * desired_size)))
+        # else: conflicting signals or within band -> keep desired_size unchanged
+
+        desired_size = int(max(min_size, min(desired_size, max_size)))
+        if desired_size < 1:
+            desired_size = 1
+
+        print(
+            f"[SIZE-AIMD-ADV] TTFT_p95={ttft_p95:.4f}, S_t={S_t:.4f}, "
+            f"backlog_after={backlog_after}, "
+            f"updated_desired_size={desired_size} (was {old_size})"
+        )
+
+        i = batch_indices[-1] + 1
+        server_time = batch_finish
+
+    return float(np.mean(ttfts))
+
 def simulate_aimd_wait(
     records: List[Dict],
     model,
@@ -233,7 +399,7 @@ def simulate_aimd_wait(
     method: str = "prepacking",
     alpha: float = 0.01,
     beta: float = 0.5,
-    max_tokens: int = None,
+    max_requests_per_batch: int = 64,
 ) -> float:
     """
     AIMD prepack：wait window is dynamically controlled by AIMDWindowController,
@@ -242,9 +408,6 @@ def simulate_aimd_wait(
     TTFT here includes:
       - waiting time in the queue
       - batch prefill + generate-1-token time (via TTFT_* functions)
-    
-    Args:
-        max_tokens: Maximum total tokens allowed in a batch. If None, no limit.
     """
     processor = PrePackProcessor(tokenizer)
     controller = AIMDWindowController(
@@ -277,17 +440,12 @@ def simulate_aimd_wait(
         batch_start = server_time + wait_window
 
         batch_indices = []
-        total_tokens = 0
         j = i
-        while j < n and records[j]["timestamp"] <= batch_start:
-            # Check max_tokens limit if specified
-            if max_tokens is not None:
-                # Tokenize the current request to count tokens
-                request_tokens = len(tokenizer(records[j]["text"]).input_ids)
-                if total_tokens + request_tokens > max_tokens:
-                    # Adding this request would exceed max_tokens, stop collecting
-                    break
-                total_tokens += request_tokens
+        while (
+            j < n
+            and records[j]["timestamp"] <= batch_start
+            and len(batch_indices) < max_requests_per_batch
+        ):
             batch_indices.append(j)
             j += 1
 
@@ -306,11 +464,10 @@ def simulate_aimd_wait(
 
         # print current batch information (using current window)
         batch_id += 1
-        token_info = f", tokens={total_tokens}" if max_tokens is not None else ""
         print(
             f"[AIMD] batch={batch_id}, "
             f"wait_window={wait_window:.4f}s, "
-            f"num_requests={len(batch_indices)}{token_info}"
+            f"num_requests={len(batch_indices)}"
         )
 
         # Run one batch with TTFT metric, batch latency includes (prefill + generate first token)
@@ -336,17 +493,266 @@ def simulate_aimd_wait(
         i = batch_indices[-1] + 1
         server_time = batch_finish
 
-    avg_ttft = float(np.mean(ttfts))
-    total_time = server_time - first_arrival if first_arrival is not None else 0.0
-    throughput = total_tokens_all_batches / total_time if total_time > 0 else 0.0
-    print(f"[AIMD] Throughput: {throughput:.2f} tokens/second")
-    
-    return avg_ttft
+    return float(np.mean(ttfts))
+
+
+def simulate_size_based_wait(
+    records: List[Dict],
+    model,
+    tokenizer,
+    device,
+    target_batch_size: int = 10,
+    method: str = "prepacking",
+) -> float:
+    """
+    Size-based batching: wait until there are `target_batch_size` requests,
+    then immediately run a batch with those requests (no extra time-based wait).
+
+    Semantics:
+      - For each batch, we wait until the LAST request in this batch arrives,
+        then immediately start the batch.
+      - TTFT includes:
+          * waiting time until the last request of the batch arrives
+          * batch prefill + generate-1-token time (via TTFT_* functions)
+    """
+    processor = PrePackProcessor(tokenizer)
+    ttfts = []
+
+    i = 0
+    server_time = 0.0
+    n = len(records)
+    batch_id = 0
+
+    while i < n:
+        # Form a batch by count
+        batch_indices = list(range(i, min(i + target_batch_size, n)))
+        if not batch_indices:
+            break
+
+        batch_id += 1
+        batch_texts = [records[k]["text"] for k in batch_indices]
+
+        # The batch cannot start before the last request in this batch arrives
+        arrival_last = records[batch_indices[-1]]["timestamp"]
+        if arrival_last > server_time:
+            server_time = arrival_last
+        batch_start = server_time
+
+        print(
+            f"[SIZE-{target_batch_size}] batch={batch_id}, "
+            f"num_requests={len(batch_indices)}"
+        )
+
+        batch_latency = run_batch_with_metric(
+            batch_texts,
+            model,
+            tokenizer,
+            device,
+            method=method,
+            metric="ttft",
+            processor=processor,
+        )
+        batch_finish = batch_start + batch_latency
+
+        for k in batch_indices:
+            arrival_k = records[k]["timestamp"]
+            ttfts.append(batch_finish - arrival_k)
+
+        i = batch_indices[-1] + 1
+        server_time = batch_finish
+
+    return float(np.mean(ttfts))
+
+
+def simulate_size_aimd_wait(
+    records: List[Dict],
+    model,
+    tokenizer,
+    device,
+    init_size: int,
+    min_size: int,
+    max_size: int,
+    method: str = "prepacking",
+    alpha: float = 1.0,
+    beta: float = 0.5,
+    max_requests_per_batch: int = 64,
+) -> float:
+    """
+    Size-based AIMD batching:
+
+    - Controller maintains a desired batch size (number of requests), S.
+    - At each batch:
+        * Let backlog_before = queued requests at server_time (capped by max_requests_per_batch).
+        * Actual batch size = min(backlog_before, S, max_requests_per_batch), if backlog_before > 0.
+        * After running the batch, compute backlog_after at batch_finish.
+        * If backlog_after > S: S += alpha      (additive increase)
+          else:               S *= beta        (multiplicative decrease)
+      TTFT includes queue waiting time + batch TTFT (prefill + first token).
+    """
+    processor = PrePackProcessor(tokenizer)
+    controller = AIMDSizeController(
+        init_size=init_size,
+        min_size=min_size,
+        max_size=max_size,
+        alpha=alpha,
+        beta=beta,
+    )
+
+    ttfts = []
+    i = 0
+    server_time = 0.0
+    n = len(records)
+    batch_id = 0
+
+    while i < n:
+        # Ensure server_time is at least the arrival of the next unserved request
+        arrival = records[i]["timestamp"]
+        if arrival > server_time:
+            server_time = arrival
+
+        # Compute backlog before starting this batch
+        queued_indices = []
+        j = i
+        while (
+            j < n
+            and records[j]["timestamp"] <= server_time
+            and len(queued_indices) < max_requests_per_batch
+        ):
+            queued_indices.append(j)
+            j += 1
+
+        if not queued_indices:
+            # No queued requests at this time, move to next
+            i += 1
+            continue
+
+        desired_size = controller.batch_size
+        actual_batch_size = max(1, min(len(queued_indices), desired_size, max_requests_per_batch))
+
+        batch_indices = queued_indices[:actual_batch_size]
+        batch_texts = [records[k]["text"] for k in batch_indices]
+
+        batch_id += 1
+        print(
+            f"[SIZE-AIMD] batch={batch_id}, "
+            f"desired_size={desired_size}, "
+            f"backlog_before={len(queued_indices)}, "
+            f"actual_batch_size={len(batch_indices)}"
+        )
+
+        batch_start = server_time
+
+        batch_latency = run_batch_with_metric(
+            batch_texts,
+            model,
+            tokenizer,
+            device,
+            method=method,
+            metric="ttft",
+            processor=processor,
+        )
+        batch_finish = batch_start + batch_latency
+
+        # Per-request TTFT
+        for k in batch_indices:
+            arrival_k = records[k]["timestamp"]
+            ttfts.append(batch_finish - arrival_k)
+
+        # Compute backlog after batch_finish (unserved + already arrived)
+        backlog_after = 0
+        k = batch_indices[-1] + 1
+        while k < n and records[k]["timestamp"] <= batch_finish:
+            backlog_after += 1
+            k += 1
+
+        controller.update(backlog_after)
+
+        i = batch_indices[-1] + 1
+        server_time = batch_finish
+
+    return float(np.mean(ttfts))
+
+def simulate_first_wait_then_zero_wait(
+    records: List[Dict],
+    model,
+    tokenizer,
+    device,
+    first_wait_window: float,
+    method: str = "prepacking",
+    max_requests_per_batch: int = 64,
+) -> float:
+    """
+    Hybrid policy:
+      - First batch: use a time-based wait window `first_wait_window` seconds.
+      - Subsequent batches: wait_window = 0, i.e.,
+          * if there are queued requests when previous batch finishes, run immediately;
+          * otherwise, wait until next arrival, then run immediately (no extra delay).
+    """
+    processor = PrePackProcessor(tokenizer)
+    ttfts = []
+
+    i = 0
+    server_time = 0.0
+    n = len(records)
+    batch_id = 0
+    first_batch = True
+
+    while i < n:
+        arrival = records[i]["timestamp"]
+        if arrival > server_time:
+            server_time = arrival
+
+        wait_window = first_wait_window if first_batch else 0.0
+        batch_start = server_time + wait_window
+
+        batch_indices = []
+        j = i
+        while (
+            j < n
+            and records[j]["timestamp"] <= batch_start
+            and len(batch_indices) < max_requests_per_batch
+        ):
+            batch_indices.append(j)
+            j += 1
+
+        if not batch_indices:
+            i += 1
+            first_batch = False
+            continue
+
+        batch_texts = [records[k]["text"] for k in batch_indices]
+
+        batch_id += 1
+        print(
+            f"[FIRST-THEN-0] batch={batch_id}, "
+            f"wait_window={wait_window:.4f}s, "
+            f"num_requests={len(batch_indices)}"
+        )
+
+        batch_latency = run_batch_with_metric(
+            batch_texts,
+            model,
+            tokenizer,
+            device,
+            method=method,
+            metric="ttft",
+            processor=processor,
+        )
+        batch_finish = batch_start + batch_latency
+
+        for k in batch_indices:
+            arrival_k = records[k]["timestamp"]
+            ttfts.append(batch_finish - arrival_k)
+
+        i = batch_indices[-1] + 1
+        server_time = batch_finish
+        first_batch = False
+
+    return float(np.mean(ttfts))
 
 
 if __name__ == "__main__":
     # 1. load timestamp + text data
-    COMBINED_CSV_PATH = "../dataset/combined/mmlu_azure_ts.csv"
     records = load_records(COMBINED_CSV_PATH)
     print(f"Loaded {len(records)} records from {COMBINED_CSV_PATH}")
 
@@ -356,32 +762,126 @@ if __name__ == "__main__":
 
     max_tokens = 1024 * 16
 
-    # 3. TEST：static prepack
-    static_wait = 0.5
-    avg_ttft_static = simulate_static_wait(
-        records,
-        model,
-        tokenizer,
-        device,
-        fixed_wait_window=static_wait,
-        method="prepacking",
-        max_tokens=max_tokens,
-    )
-    print(f"[STATIC] fixed_wait={static_wait:.3f}s, avg per-input TTFT={avg_ttft_static:.4f}s")
+    # # 3. TEST：static prepack (with prepacking)
+    static_wait = 0.2
+    max_requests_per_batch = 64
+    # avg_ttft_static_prepack = simulate_static_wait(
+    #     records,
+    #     model,
+    #     tokenizer,
+    #     device,
+    #     fixed_wait_window=static_wait,
+    #     method="prepacking",
+    #     max_requests_per_batch=max_requests_per_batch,
+    # )
+    # print(
+    #     f"[STATIC-PREPACK] "
+    #     f"avg per-input TTFT={avg_ttft_static_prepack:.4f}s"
+    # )
 
-    # 4. TEST：AIMD prepack
-    avg_ttft_aimd = simulate_aimd_wait(
+    # # 3b. TEST：static baseline (no prepacking, padding-based batching)
+    # avg_ttft_static_baseline = simulate_static_wait(
+    #     records,
+    #     model,
+    #     tokenizer,
+    #     device,
+    #     fixed_wait_window=static_wait,
+    #     method="baseline",
+    #     max_requests_per_batch=max_requests_per_batch,
+    # )
+    # print(
+    #     f"[STATIC-BASELINE] "
+    #     f"avg per-input TTFT={avg_ttft_static_baseline:.4f}s"
+    # )
+
+    # # 4. TEST：AIMD prepack
+    # avg_ttft_aimd_prepack = simulate_aimd_wait(
+    #     records,
+    #     model,
+    #     tokenizer,
+    #     device,
+    #     init_wait=0.2,   # initial wait window
+    #     min_wait=0.1,     # minimum wait window (as long as there is a request)
+    #     max_wait=0.4,     # maximum wait window
+    #     target_ttft=0.3,  # target per-input TTFT, adjust according to your needs
+    #     method="prepacking",
+    #     alpha=0.05,       # when latency < target, wait += alpha
+    #     beta=0.5,         # when latency >= target, wait *= beta
+    #     max_requests_per_batch=max_requests_per_batch,
+    # )
+    # print(f"[AIMD-PREPACK] avg per-input TTFT={avg_ttft_aimd_prepack:.4f}s")
+
+    # # 4b. TEST：AIMD baseline (no prepacking)
+    # avg_ttft_aimd_baseline = simulate_aimd_wait(
+    #     records,
+    #     model,
+    #     tokenizer,
+    #     device,
+    #     init_wait=0.2,
+    #     min_wait=0.1,
+    #     max_wait=0.4,
+    #     target_ttft=0.3,
+    #     method="baseline",
+    #     alpha=0.05,
+    #     beta=0.5,
+    #     max_requests_per_batch=max_requests_per_batch,
+    # )
+    # print(f"[AIMD-BASELINE] avg per-input TTFT={avg_ttft_aimd_baseline:.4f}s")
+
+    # 5. TEST：size-based batching (wait until 10 requests, then run)
+    # avg_ttft_size10_prepack = simulate_size_based_wait(
+    #     records,
+    #     model,
+    #     tokenizer,
+    #     device,
+    #     target_batch_size=10,
+    #     method="prepacking",
+    # )
+    # print(f"[SIZE-10-PREPACK] avg per-input TTFT={avg_ttft_size10_prepack:.4f}s")
+
+    # # 6. TEST：first batch wait=0.2s, then wait_window=0s
+    avg_ttft_first_then_zero = simulate_first_wait_then_zero_wait(
         records,
         model,
         tokenizer,
         device,
-        init_wait=static_wait,  # initial wait window
-        min_wait=0.001,  # minimum wait window (as long as there is a request)
-        max_wait=0.4,  # maximum wait window
-        target_ttft=0.3,  # target per-input TTFT, adjust according to your needs
+        first_wait_window=0.2,
         method="prepacking",
-        alpha=0.05,  # when latency < target, wait += alpha
-        beta=0.5,  # when latency >= target, wait *= beta
-        max_tokens=max_tokens,
+        max_requests_per_batch=max_requests_per_batch,
     )
-    print(f"[AIMD] avg per-input TTFT={avg_ttft_aimd:.4f}s")
+    print(f"[FIRST-THEN-0-PREPACK] avg per-input TTFT={avg_ttft_first_then_zero:.4f}s")
+
+    # 7. TEST：size-based AIMD batching (dynamic batch size by count)
+    avg_ttft_size_aimd_prepack = simulate_size_aimd_wait(
+        records,
+        model,
+        tokenizer,
+        device,
+        init_size=64,     # initial desired batch size
+        min_size=4,
+        max_size=128,
+        method="prepacking",
+        alpha=10,        # additive increase step
+        beta=0.5,         # multiplicative decrease factor
+        max_requests_per_batch=128,
+    )
+    print(f"[SIZE-AIMD-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_prepack:.4f}s")
+
+    # 8. TEST：advanced size-based AIMD batching (EWMA + hysteresis on TTFT_p95) (haven't tested)
+    avg_ttft_size_aimd_adv_prepack = simulate_size_aimd_wait_advanced(
+        records,
+        model,
+        tokenizer,
+        device,
+        init_size=64,
+        min_size=4,
+        max_size=128,
+        method="prepacking",
+        alpha=10,
+        beta=0.5,
+        gamma=0.1,
+        tau_low=0.25,
+        tau_high=0.35,
+        max_requests_per_batch=128,
+    )
+    print(f"[SIZE-AIMD-ADV-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_adv_prepack:.4f}s")
