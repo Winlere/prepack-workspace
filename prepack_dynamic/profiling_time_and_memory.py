@@ -104,6 +104,48 @@ def get_average_gpu_utilization():
     return gpus[visible_device_ids[0]].load
 
 
+def sample_batches_by_token_budget(texts, tokenizer, max_tokens_per_batch: int):
+    """
+    Yield batches such that the total number of tokens in each batch
+    does not exceed `max_tokens_per_batch`.
+
+    This is mainly used to avoid CUDA OOM in baseline (padding-based) batching
+    by capping the total token budget per batch.
+    """
+    # Work on a shuffled copy to preserve randomness similar to sample_batches
+    texts_shuffled = list(texts)
+    random.shuffle(texts_shuffled)
+
+    current_batch = []
+    current_tokens = 0
+
+    for text in texts_shuffled:
+        # Compute token length for this text
+        token_len = len(tokenizer(text).input_ids)
+
+        # If a single request exceeds the budget, yield it alone as a batch
+        if token_len > max_tokens_per_batch:
+            if current_batch:
+                yield current_batch
+                current_batch = []
+                current_tokens = 0
+            yield [text]
+            continue
+
+        # If adding this request would exceed the budget, flush current batch
+        if current_tokens + token_len > max_tokens_per_batch:
+            if current_batch:
+                yield current_batch
+            current_batch = [text]
+            current_tokens = token_len
+        else:
+            current_batch.append(text)
+            current_tokens += token_len
+
+    if current_batch:
+        yield current_batch
+
+
 def measure_inference_resources(
     method: str,
     texts: List[str],
@@ -117,6 +159,7 @@ def measure_inference_resources(
     binpack_algo: str = "greedy",
     dynamic_aimd: bool = False,
     aimd_config: Optional[Dict[str, Any]] = None,
+    max_tokens_per_batch: Optional[int] = None,
 ):
     scenario_times = []
 
@@ -142,11 +185,19 @@ def measure_inference_resources(
     for _ in range(num_runs):
         if not dynamic_aimd:
             # Static batching: use predefined batch_size and dataset samplers
-            batches_generator = (
-                sample_batches(texts, batch_size)
-                if method != "length-ordered"
-                else sample_batches_by_length(texts, batch_size)
-            )
+            if method == "full-batching" and max_tokens_per_batch is not None:
+                # Use token-budget-based batching to avoid CUDA OOM for baseline
+                batches_generator = sample_batches_by_token_budget(
+                    texts, tokenizer, max_tokens_per_batch
+                )
+                total = None
+            else:
+                batches_generator = (
+                    sample_batches(texts, batch_size)
+                    if method != "length-ordered"
+                    else sample_batches_by_length(texts, batch_size)
+                )
+                total = total_batches
 
             max_gpu_utilization = []
             max_gpu_memory = []
@@ -154,7 +205,7 @@ def measure_inference_resources(
             batch_gpu_utilizations = []
             mean_gpu_utilizations = []
 
-            for batch in tqdm(batches_generator, total=total_batches, desc=method):
+            for batch in tqdm(batches_generator, total=total, desc=method):
                 utilization_stats = {}
                 stop_event = threading.Event()
                 monitor_thread = threading.Thread(
@@ -291,6 +342,7 @@ def main(
     target_latency: float = 0.5,
     aimd_alpha: float = 1.0,
     aimd_beta: float = 0.5,
+    max_tokens_per_batch: Optional[int] = None,
 ):
 
     torch.set_num_threads(5)
@@ -362,6 +414,7 @@ def main(
                 binpack_algo=binpack_algo,
                 dynamic_aimd=dynamic_aimd,
                 aimd_config=aimd_config,
+                max_tokens_per_batch=max_tokens_per_batch,
             )
             table.add_row(
                 [
