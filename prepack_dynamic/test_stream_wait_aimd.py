@@ -109,10 +109,15 @@ def simulate_static_wait(
     i = 0
     server_time = 0.0  # server current free time
     batch_id = 0
+    first_arrival = None  # Track first request arrival time
+    total_tokens_all_batches = 0  # Track total tokens processed across all batches
 
     n = len(records)
     while i < n:
         arrival = records[i]["timestamp"]
+        # Track first arrival time
+        if first_arrival is None:
+            first_arrival = arrival
         # if the server is free and the next request is earlier, wait for the request to arrive
         if arrival > server_time:
             server_time = arrival
@@ -142,6 +147,13 @@ def simulate_static_wait(
             continue
 
         batch_texts = [records[k]["text"] for k in batch_indices]
+
+        # Calculate tokens for this batch if not already calculated
+        if max_tokens is None:
+            # Need to count tokens for all requests in batch
+            total_tokens = sum(len(tokenizer(records[k]["text"]).input_ids) for k in batch_indices)
+        
+        total_tokens_all_batches += total_tokens
 
         # print current batch information
         batch_id += 1
@@ -174,7 +186,12 @@ def simulate_static_wait(
         i = batch_indices[-1] + 1
         server_time = batch_finish
 
-    return float(np.mean(ttfts))
+    avg_ttft = float(np.mean(ttfts))
+    total_time = server_time - first_arrival if first_arrival is not None else 0.0
+    throughput = total_tokens_all_batches / total_time if total_time > 0 else 0.0
+    print(f"[STATIC] Throughput: {throughput:.2f} tokens/second")
+    
+    return avg_ttft
 
 
 class AIMDWindowController:
@@ -245,9 +262,14 @@ def simulate_aimd_wait(
     server_time = 0.0
     n = len(records)
     batch_id = 0
+    first_arrival = None  # Track first request arrival time
+    total_tokens_all_batches = 0  # Track total tokens processed across all batches
 
     while i < n:
         arrival = records[i]["timestamp"]
+        # Track first arrival time
+        if first_arrival is None:
+            first_arrival = arrival
         if arrival > server_time:
             server_time = arrival
 
@@ -274,6 +296,13 @@ def simulate_aimd_wait(
             continue
 
         batch_texts = [records[k]["text"] for k in batch_indices]
+
+        # Calculate tokens for this batch if not already calculated
+        if max_tokens is None:
+            # Need to count tokens for all requests in batch
+            total_tokens = sum(len(tokenizer(records[k]["text"]).input_ids) for k in batch_indices)
+        
+        total_tokens_all_batches += total_tokens
 
         # print current batch information (using current window)
         batch_id += 1
@@ -307,7 +336,12 @@ def simulate_aimd_wait(
         i = batch_indices[-1] + 1
         server_time = batch_finish
 
-    return float(np.mean(ttfts))
+    avg_ttft = float(np.mean(ttfts))
+    total_time = server_time - first_arrival if first_arrival is not None else 0.0
+    throughput = total_tokens_all_batches / total_time if total_time > 0 else 0.0
+    print(f"[AIMD] Throughput: {throughput:.2f} tokens/second")
+    
+    return avg_ttft
 
 
 if __name__ == "__main__":
@@ -317,11 +351,13 @@ if __name__ == "__main__":
     print(f"Loaded {len(records)} records from {COMBINED_CSV_PATH}")
 
     # 2. load model and tokenizer
-    model, tokenizer = load_model_and_tokenizer(base_model="llama2.7b", loadbit=4)
+    model, tokenizer = load_model_and_tokenizer(base_model="llama1b", loadbit=4)
     device = model.device
 
+    max_tokens = 1024 * 16
+
     # 3. TEST：static prepack
-    static_wait = 0.1
+    static_wait = 0.5
     avg_ttft_static = simulate_static_wait(
         records,
         model,
@@ -329,7 +365,7 @@ if __name__ == "__main__":
         device,
         fixed_wait_window=static_wait,
         method="prepacking",
-        max_tokens=2048,
+        max_tokens=max_tokens,
     )
     print(f"[STATIC] fixed_wait={static_wait:.3f}s, avg per-input TTFT={avg_ttft_static:.4f}s")
 
@@ -339,13 +375,13 @@ if __name__ == "__main__":
         model,
         tokenizer,
         device,
-        init_wait=0.2,  # initial wait window
-        min_wait=0.05,  # minimum wait window (as long as there is a request)
+        init_wait=static_wait,  # initial wait window
+        min_wait=0.001,  # minimum wait window (as long as there is a request)
         max_wait=0.4,  # maximum wait window
         target_ttft=0.3,  # target per-input TTFT, adjust according to your needs
         method="prepacking",
         alpha=0.05,  # when latency < target, wait += alpha
         beta=0.5,  # when latency >= target, wait *= beta
-        max_tokens=2048,
+        max_tokens=max_tokens,
     )
     print(f"[AIMD] avg per-input TTFT={avg_ttft_aimd:.4f}s")
