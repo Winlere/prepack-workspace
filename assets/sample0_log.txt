@@ -1,0 +1,58 @@
+[FIRST-THEN-0] batch=2, wait_window=0.0000s, num_requests=25
+[FIRST-THEN-0] batch=3, wait_window=0.0000s, num_requests=25
+[FIRST-THEN-0] batch=4, wait_window=0.0000s, num_requests=24
+[FIRST-THEN-0] batch=5, wait_window=0.0000s, num_requests=25
+[FIRST-THEN-0] batch=6, wait_window=0.0000s, num_requests=25
+[FIRST-THEN-0] batch=7, wait_window=0.0000s, num_requests=22
+[FIRST-THEN-0] batch=8, wait_window=0.0000s, num_requests=30
+[FIRST-THEN-0] batch=9, wait_window=0.0000s, num_requests=29
+[FIRST-THEN-0] batch=10, wait_window=0.0000s, num_requests=27
+[FIRST-THEN-0] batch=11, wait_window=0.0000s, num_requests=29
+[FIRST-THEN-0] batch=12, wait_window=0.0000s, num_requests=26
+[FIRST-THEN-0] batch=13, wait_window=0.0000s, num_requests=28
+[FIRST-THEN-0] batch=14, wait_window=0.0000s, num_requests=26
+[FIRST-THEN-0] batch=15, wait_window=0.0000s, num_requests=27
+[FIRST-THEN-0] batch=16, wait_window=0.0000s, num_requests=28
+[FIRST-THEN-0] batch=17, wait_window=0.0000s, num_requests=28
+[FIRST-THEN-0] batch=18, wait_window=0.0000s, num_requests=29
+[FIRST-THEN-0] batch=19, wait_window=0.0000s, num_requests=28
+[FIRST-THEN-0] batch=20, wait_window=0.0000s, num_requests=31
+[FIRST-THEN-0] batch=21, wait_window=0.0000s, num_requests=31
+[FIRST-THEN-0] batch=22, wait_window=0.0000s, num_requests=28
+[FIRST-THEN-0] batch=23, wait_window=0.0000s, num_requests=24
+[FIRST-THEN-0] batch=24, wait_window=0.0000s, num_requests=27
+[FIRST-THEN-0] batch=25, wait_window=0.0000s, num_requests=3
+[FIRST-THEN-0-PREPACK] avg per-input TTFT=21.5627s
+[SIZE-AIMD] batch=1, desired_size=64, backlog_before=1, actual_batch_size=1
+[SIZE-AIMD] batch=2, desired_size=32, backlog_before=1, actual_batch_size=1
+[SIZE-AIMD] batch=3, desired_size=16, backlog_before=1, actual_batch_size=1
+[SIZE-AIMD] batch=4, desired_size=8, backlog_before=2, actual_batch_size=2
+[SIZE-AIMD] batch=5, desired_size=4, backlog_before=2, actual_batch_size=2
+[SIZE-AIMD] batch=6, desired_size=4, backlog_before=2, actual_batch_size=2
+[SIZE-AIMD] batch=7, desired_size=14, backlog_before=6, actual_batch_size=6
+[SIZE-AIMD] batch=8, desired_size=7, backlog_before=8, actual_batch_size=7
+[SIZE-AIMD] batch=9, desired_size=17, backlog_before=14, actual_batch_size=14
+[SIZE-AIMD] batch=10, desired_size=27, backlog_before=30, actual_batch_size=24
+[SIZE-AIMD] batch=11, desired_size=37, backlog_before=47, actual_batch_size=26
+[SIZE-AIMD] batch=12, desired_size=47, backlog_before=69, actual_batch_size=24
+[SIZE-AIMD] batch=13, desired_size=57, backlog_before=86, actual_batch_size=25
+[SIZE-AIMD] batch=14, desired_size=67, backlog_before=101, actual_batch_size=24
+[SIZE-AIMD] batch=15, desired_size=77, backlog_before=123, actual_batch_size=30
+[SIZE-AIMD] batch=16, desired_size=87, backlog_before=128, actual_batch_size=29
+[SIZE-AIMD] batch=17, desired_size=97, backlog_before=128, actual_batch_size=27
+[SIZE-AIMD] batch=18, desired_size=107, backlog_before=128, actual_batch_size=28
+[SIZE-AIMD] batch=19, desired_size=117, backlog_before=128, actual_batch_size=28
+[SIZE-AIMD] batch=20, desired_size=127, backlog_before=128, actual_batch_size=26
+[SIZE-AIMD] batch=21, desired_size=128, backlog_before=128, actual_batch_size=28
+[SIZE-AIMD] batch=22, desired_size=128, backlog_before=128, actual_batch_size=28
+[SIZE-AIMD] batch=23, desired_size=128, backlog_before=128, actual_batch_size=29
+[SIZE-AIMD] batch=24, desired_size=128, backlog_before=128, actual_batch_size=27
+[SIZE-AIMD] batch=25, desired_size=128, backlog_before=128, actual_batch_size=28
+[SIZE-AIMD] batch=26, desired_size=128, backlog_before=128, actual_batch_size=28
+[SIZE-AIMD] batch=27, desired_size=128, backlog_before=128, actual_batch_size=30
+[SIZE-AIMD] batch=28, desired_size=64, backlog_before=102, actual_batch_size=30
+[SIZE-AIMD] batch=29, desired_size=74, backlog_before=72, actual_batch_size=29
+[SIZE-AIMD] batch=30, desired_size=37, backlog_before=43, actual_batch_size=24
+[SIZE-AIMD] batch=31, desired_size=18, backlog_before=19, actual_batch_size=18
+[SIZE-AIMD] batch=32, desired_size=9, backlog_before=1, actual_batch_size=1
+[SIZE-AIMD-PREPACK] avg per-input TTFT=19.8864s

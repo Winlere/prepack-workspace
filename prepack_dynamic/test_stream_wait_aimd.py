@@ -14,7 +14,7 @@ from profiling_time_and_memory import (
     TTFT_with_baseline,
 )
 
-COMBINED_CSV_PATH = "../dataset/combined/mmlu_azure_ts_scaled_4.csv"
+COMBINED_CSV_PATH = "../dataset/realdata_downsample/sampled.4.csv"
 
 
 def load_records(csv_path: str) -> List[Dict]:
@@ -836,7 +836,7 @@ if __name__ == "__main__":
     model, tokenizer = load_model_and_tokenizer(base_model="llama1b", loadbit=4)
     device = model.device
 
-    max_tokens = 1024 * 4
+    max_tokens = 1024 * 20
 
     # # 3. TEST：static prepack (with prepacking)
     static_wait = 0.2
@@ -925,7 +925,7 @@ if __name__ == "__main__":
         method="prepacking",
         max_requests_per_batch=max_requests_per_batch,
         max_tokens=max_tokens,
-        use_ilp_packing=True,
+        use_ilp_packing=False,
         overlap_ilp=False,
     )
     print(f"[FIRST-THEN-0-PREPACK] avg per-input TTFT={avg_ttft_first_then_zero:.4f}s")
