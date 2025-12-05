@@ -14,7 +14,7 @@ from profiling_time_and_memory import (
     TTFT_with_baseline,
 )
 
-COMBINED_CSV_PATH = "../dataset/realdata_downsample/sampled.4.csv"
+COMBINED_CSV_PATH = "../dataset/realdata_downsample/code.sampled.2.csv"
 
 
 def load_records(csv_path: str) -> List[Dict]:
@@ -936,11 +936,11 @@ if __name__ == "__main__":
         model,
         tokenizer,
         device,
-        init_size=64,     # initial desired batch size
-        min_size=4,
-        max_size=128,
+        init_size=4,     # initial desired batch size
+        min_size=1,
+        max_size=16,
         method="prepacking",
-        alpha=10,        # additive increase step
+        alpha=1,        # additive increase step
         beta=0.5,         # multiplicative decrease factor
         max_requests_per_batch=128,
         max_tokens=max_tokens,
