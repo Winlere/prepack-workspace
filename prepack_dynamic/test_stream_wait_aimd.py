@@ -5,7 +5,7 @@ from typing import List, Dict
 import numpy as np
 import torch
 
-from utils import load_model_and_tokenizer
+from utils import load_model_and_tokenizer, integer_program_packing, LAST_ILP_SOLVE_TIME
 from processor import PrePackProcessor
 from profiling_time_and_memory import (
     prefill_with_prepacking,
@@ -50,6 +50,7 @@ def run_batch_with_metric(
     method: str = "prepacking",
     metric: str = "prefill",
     processor: PrePackProcessor = None,
+    use_ilp_packing: bool = False,
 ) -> float:
     """
     Run a batch and return latency (seconds).
@@ -60,7 +61,10 @@ def run_batch_with_metric(
     """
     if method == "prepacking":
         if processor is None:
-            processor = PrePackProcessor(tokenizer)
+            # 默认使用 greedy（binpacking 库内部的 FFD），当 use_ilp_packing=True 时
+            # 使用 utils.integer_program_packing（ILP 最优解）
+            packing_fn = integer_program_packing if use_ilp_packing else None
+            processor = PrePackProcessor(tokenizer, packing_fn=packing_fn)
         if metric == "prefill":
             fn = prefill_with_prepacking
         elif metric == "ttft":
@@ -94,6 +98,7 @@ def simulate_static_wait(
     method: str = "prepacking",
     max_requests_per_batch: int = 64,
     max_tokens: int = None,
+    use_ilp_packing: bool = False,
 ) -> float:
     """
     Static prepack：fixed wait window fixed_wait_window (seconds),
@@ -103,7 +108,8 @@ def simulate_static_wait(
       - waiting time in the queue
       - batch prefill + generate-1-token time (via TTFT_* functions)
     """
-    processor = PrePackProcessor(tokenizer)
+    packing_fn = integer_program_packing if use_ilp_packing else None
+    processor = PrePackProcessor(tokenizer, packing_fn=packing_fn)
     ttfts = []
 
     i = 0
@@ -167,6 +173,7 @@ def simulate_static_wait(
             method=method,
             metric="ttft",
             processor=processor,
+            use_ilp_packing=use_ilp_packing,
         )
 
         batch_finish = batch_start + batch_latency
@@ -279,7 +286,7 @@ def simulate_size_aimd_wait_advanced(
               else:
                     N_{t+1} = N_t                              (stable / conflicting signals)
     """
-    processor = PrePackProcessor(tokenizer)
+    processor = PrePackProcessor(tokenizer, packing_fn=integer_program_packing)
 
     desired_size = max(min_size, min(init_size, max_size))
     S_t = None  # smoothed TTFT signal
@@ -339,6 +346,7 @@ def simulate_size_aimd_wait_advanced(
             method=method,
             metric="ttft",
             processor=processor,
+            use_ilp_packing=True,
         )
         batch_finish = batch_start + batch_latency
 
@@ -410,6 +418,7 @@ def simulate_aimd_wait(
     beta: float = 0.5,
     max_requests_per_batch: int = 64,
     max_tokens: int = None,
+    use_ilp_packing: bool = False,
 ) -> float:
     """
     AIMD prepack：wait window is dynamically controlled by AIMDWindowController,
@@ -419,7 +428,8 @@ def simulate_aimd_wait(
       - waiting time in the queue
       - batch prefill + generate-1-token time (via TTFT_* functions)
     """
-    processor = PrePackProcessor(tokenizer)
+    packing_fn = integer_program_packing if use_ilp_packing else None
+    processor = PrePackProcessor(tokenizer, packing_fn=packing_fn)
     controller = AIMDWindowController(
         init_wait=init_wait,
         min_wait=min_wait,
@@ -490,6 +500,7 @@ def simulate_aimd_wait(
             method=method,
             metric="ttft",
             processor=processor,
+            use_ilp_packing=use_ilp_packing,
         )
 
         batch_finish = batch_start + batch_latency
@@ -515,6 +526,7 @@ def simulate_size_based_wait(
     target_batch_size: int = 10,
     method: str = "prepacking",
     max_tokens: int = None,
+    use_ilp_packing: bool = False,
 ) -> float:
     """
     Size-based batching: wait until there are `target_batch_size` requests,
@@ -527,7 +539,8 @@ def simulate_size_based_wait(
           * waiting time until the last request of the batch arrives
           * batch prefill + generate-1-token time (via TTFT_* functions)
     """
-    processor = PrePackProcessor(tokenizer)
+    packing_fn = integer_program_packing if use_ilp_packing else None
+    processor = PrePackProcessor(tokenizer, packing_fn=packing_fn)
     ttfts = []
 
     i = 0
@@ -574,6 +587,7 @@ def simulate_size_based_wait(
             method=method,
             metric="ttft",
             processor=processor,
+            use_ilp_packing=use_ilp_packing,
         )
         batch_finish = batch_start + batch_latency
 
@@ -595,11 +609,12 @@ def simulate_size_aimd_wait(
     init_size: int,
     min_size: int,
     max_size: int,
-    method: str = "prepacking",
     alpha: float = 1.0,
     beta: float = 0.5,
+    method: str = "prepacking",
     max_requests_per_batch: int = 64,
     max_tokens: int = None,
+    use_ilp_packing: bool = False,
 ) -> float:
     """
     Size-based AIMD batching:
@@ -613,7 +628,8 @@ def simulate_size_aimd_wait(
           else:               S *= beta        (multiplicative decrease)
       TTFT includes queue waiting time + batch TTFT (prefill + first token).
     """
-    processor = PrePackProcessor(tokenizer)
+    packing_fn = integer_program_packing if use_ilp_packing else None
+    processor = PrePackProcessor(tokenizer, packing_fn=packing_fn)
     controller = AIMDSizeController(
         init_size=init_size,
         min_size=min_size,
@@ -681,6 +697,7 @@ def simulate_size_aimd_wait(
             method=method,
             metric="ttft",
             processor=processor,
+            use_ilp_packing=use_ilp_packing,
         )
         batch_finish = batch_start + batch_latency
 
@@ -712,6 +729,8 @@ def simulate_first_wait_then_zero_wait(
     method: str = "prepacking",
     max_requests_per_batch: int = 64,
     max_tokens: int = None,
+    use_ilp_packing: bool = False,
+    overlap_ilp: bool = False,
 ) -> float:
     """
     Hybrid policy:
@@ -719,8 +738,15 @@ def simulate_first_wait_then_zero_wait(
       - Subsequent batches: wait_window = 0, i.e.,
           * if there are queued requests when previous batch finishes, run immediately;
           * otherwise, wait until next arrival, then run immediately (no extra delay).
+
+    当 `use_ilp_packing=True` 且 `overlap_ilp=True` 时，我们采用“理想 overlap”近似：
+      - batch 的组成方式完全保持不变（仍按 first_wait_window / zero_wait 规则选取请求）；
+      - 仍然真实运行一次 ILP+GPU 来获得 batch_latency 和 LAST_ILP_SOLVE_TIME；
+      - 在仿真时间线上，将本批的有效延迟视为 (batch_latency - LAST_ILP_SOLVE_TIME)，
+        相当于假设 ILP 计算完全被上一批 GPU 运行时间隐藏。
     """
-    processor = PrePackProcessor(tokenizer)
+    packing_fn = integer_program_packing if use_ilp_packing else None
+    processor = PrePackProcessor(tokenizer, packing_fn=packing_fn)
     ttfts = []
 
     i = 0
@@ -746,7 +772,7 @@ def simulate_first_wait_then_zero_wait(
             and len(batch_indices) < max_requests_per_batch
         ):
             token_count_j = len(tokenizer(records[j]["text"]).input_ids)
-            if token_count + token_count_j > max_tokens:
+            if max_tokens is not None and token_count + token_count_j > max_tokens:
                 break
             batch_indices.append(j)
             token_count += token_count_j
@@ -774,8 +800,21 @@ def simulate_first_wait_then_zero_wait(
             method=method,
             metric="ttft",
             processor=processor,
+            use_ilp_packing=use_ilp_packing,
         )
-        batch_finish = batch_start + batch_latency
+
+        # 理想 overlap：如果使用 ILP 且允许 overlap，就从 batch_latency 中扣掉 ILP 时间
+        effective_latency = batch_latency
+        if use_ilp_packing and overlap_ilp:
+            ilp_time = LAST_ILP_SOLVE_TIME
+            effective_latency = max(0.0, batch_latency - ilp_time)
+            print(
+                f"[FIRST-THEN-0-IDEAL-OVERLAP] batch={batch_id}, "
+                f"ilp_time={ilp_time:.6f}s, "
+                f"gpu_time={effective_latency:.6f}s"
+            )
+
+        batch_finish = batch_start + effective_latency
 
         for k in batch_indices:
             arrival_k = records[k]["timestamp"]
@@ -886,6 +925,8 @@ if __name__ == "__main__":
         method="prepacking",
         max_requests_per_batch=max_requests_per_batch,
         max_tokens=max_tokens,
+        use_ilp_packing=True,
+        overlap_ilp=False,
     )
     print(f"[FIRST-THEN-0-PREPACK] avg per-input TTFT={avg_ttft_first_then_zero:.4f}s")
 
@@ -903,25 +944,26 @@ if __name__ == "__main__":
         beta=0.5,         # multiplicative decrease factor
         max_requests_per_batch=128,
         max_tokens=max_tokens,
+        use_ilp_packing=False,
     )
     print(f"[SIZE-AIMD-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_prepack:.4f}s")
 
-    # 8. TEST：advanced size-based AIMD batching (EWMA + hysteresis on TTFT_p95) (haven't tested)
-    avg_ttft_size_aimd_adv_prepack = simulate_size_aimd_wait_advanced(
-        records,
-        model,
-        tokenizer,
-        device,
-        init_size=64,
-        min_size=4,
-        max_size=128,
-        method="prepacking",
-        alpha=10,
-        beta=0.5,
-        gamma=0.1,
-        tau_low=0.25,
-        tau_high=0.35,
-        max_requests_per_batch=128,
-        max_tokens=max_tokens,
-    )
-    print(f"[SIZE-AIMD-ADV-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_adv_prepack:.4f}s")
+    # # 8. TEST：advanced size-based AIMD batching (EWMA + hysteresis on TTFT_p95) (haven't tested)
+    # avg_ttft_size_aimd_adv_prepack = simulate_size_aimd_wait_advanced(
+    #     records,
+    #     model,
+    #     tokenizer,
+    #     device,
+    #     init_size=64,
+    #     min_size=4,
+    #     max_size=128,
+    #     method="prepacking",
+    #     alpha=10,
+    #     beta=0.5,
+    #     gamma=0.1,
+    #     tau_low=0.25,
+    #     tau_high=0.35,
+    #     max_requests_per_batch=128,
+    #     max_tokens=max_tokens,
+    # )
+    # print(f"[SIZE-AIMD-ADV-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_adv_prepack:.4f}s")
