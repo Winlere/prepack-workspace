@@ -829,6 +829,13 @@ def simulate_first_wait_then_zero_wait(
 
 if __name__ == "__main__":
     # 1. load timestamp + text data
+    import argparse
+    parser = argparse.ArgumentParser("")
+    parser.add_argument("csv_file")
+
+    args = parser.parse_args()
+    COMBINED_CSV_PATH = args.csv_file
+
     records = load_records(COMBINED_CSV_PATH)
     print(f"Loaded {len(records)} records from {COMBINED_CSV_PATH}")
 
@@ -836,7 +843,7 @@ if __name__ == "__main__":
     model, tokenizer = load_model_and_tokenizer(base_model="llama1b", loadbit=4)
     device = model.device
 
-    max_tokens = 1024 * 20
+    max_tokens = 1024 * 4
 
     # # 3. TEST：static prepack (with prepacking)
     static_wait = 0.2
@@ -940,7 +947,7 @@ if __name__ == "__main__":
         min_size=1,
         max_size=16,
         method="prepacking",
-        alpha=1,        # additive increase step
+        alpha=10,        # additive increase step
         beta=0.5,         # multiplicative decrease factor
         max_requests_per_batch=128,
         max_tokens=max_tokens,
@@ -948,22 +955,22 @@ if __name__ == "__main__":
     )
     print(f"[SIZE-AIMD-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_prepack:.4f}s")
 
-    # # 8. TEST：advanced size-based AIMD batching (EWMA + hysteresis on TTFT_p95) (haven't tested)
-    # avg_ttft_size_aimd_adv_prepack = simulate_size_aimd_wait_advanced(
-    #     records,
-    #     model,
-    #     tokenizer,
-    #     device,
-    #     init_size=64,
-    #     min_size=4,
-    #     max_size=128,
-    #     method="prepacking",
-    #     alpha=10,
-    #     beta=0.5,
-    #     gamma=0.1,
-    #     tau_low=0.25,
-    #     tau_high=0.35,
-    #     max_requests_per_batch=128,
-    #     max_tokens=max_tokens,
-    # )
-    # print(f"[SIZE-AIMD-ADV-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_adv_prepack:.4f}s")
+    # 8. TEST：advanced size-based AIMD batching (EWMA + hysteresis on TTFT_p95) (haven't tested)
+    avg_ttft_size_aimd_adv_prepack = simulate_size_aimd_wait_advanced(
+        records,
+        model,
+        tokenizer,
+        device,
+        init_size=64,
+        min_size=4,
+        max_size=128,
+        method="prepacking",
+        alpha=10,
+        beta=0.5,
+        gamma=0.1,
+        tau_low=0.25,
+        tau_high=0.35,
+        max_requests_per_batch=128,
+        max_tokens=max_tokens,
+    )
+    print(f"[SIZE-AIMD-ADV-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_adv_prepack:.4f}s")
