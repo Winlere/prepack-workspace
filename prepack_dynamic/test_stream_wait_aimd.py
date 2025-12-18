@@ -14,7 +14,8 @@ from profiling_time_and_memory import (
     TTFT_with_baseline,
 )
 
-COMBINED_CSV_PATH = "../dataset/realdata_downsample/code.sampled.2.csv"
+COMBINED_CSV_PATH = "../dataset/realdata_downsample/code.sampled.0.csv"
+# COMBINED_CSV_PATH = "../dataset/combined/mmlu_azure_ts_scaled_4.csv"
 
 
 def load_records(csv_path: str) -> List[Dict]:
@@ -843,7 +844,7 @@ if __name__ == "__main__":
     model, tokenizer = load_model_and_tokenizer(base_model="llama1b", loadbit=4)
     device = model.device
 
-    max_tokens = 1024 * 4
+    max_tokens = 1024 * 20
 
     # # 3. TEST：static prepack (with prepacking)
     static_wait = 0.2
@@ -921,7 +922,17 @@ if __name__ == "__main__":
     #     method="prepacking",
     # )
     # print(f"[SIZE-10-PREPACK] avg per-input TTFT={avg_ttft_size10_prepack:.4f}s")
-
+    # avg_ttft_first_then_zero_baseline = simulate_first_wait_then_zero_wait(
+    #     records,
+    #     model,
+    #     tokenizer,
+    #     device,
+    #     first_wait_window=0.2,
+    #     method="baseline",
+    #     max_requests_per_batch=max_requests_per_batch,
+    #     max_tokens=max_tokens,
+    # )
+    # print(f"[FIRST-THEN-0-BASELINE] avg per-input TTFT={avg_ttft_first_then_zero_baseline:.4f}s")
     # # 6. TEST：first batch wait=0.2s, then wait_window=0s
     avg_ttft_first_then_zero = simulate_first_wait_then_zero_wait(
         records,
@@ -932,7 +943,7 @@ if __name__ == "__main__":
         method="prepacking",
         max_requests_per_batch=max_requests_per_batch,
         max_tokens=max_tokens,
-        use_ilp_packing=False,
+        use_ilp_packing=False, # False for greedy, True for ip/dp
         overlap_ilp=False,
     )
     print(f"[FIRST-THEN-0-PREPACK] avg per-input TTFT={avg_ttft_first_then_zero:.4f}s")
@@ -951,26 +962,26 @@ if __name__ == "__main__":
         beta=0.5,         # multiplicative decrease factor
         max_requests_per_batch=128,
         max_tokens=max_tokens,
-        use_ilp_packing=False,
+        use_ilp_packing=False, # False for greedy, True for ip/dp
     )
     print(f"[SIZE-AIMD-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_prepack:.4f}s")
 
-    # 8. TEST：advanced size-based AIMD batching (EWMA + hysteresis on TTFT_p95) (haven't tested)
-    avg_ttft_size_aimd_adv_prepack = simulate_size_aimd_wait_advanced(
-        records,
-        model,
-        tokenizer,
-        device,
-        init_size=64,
-        min_size=4,
-        max_size=128,
-        method="prepacking",
-        alpha=10,
-        beta=0.5,
-        gamma=0.1,
-        tau_low=0.25,
-        tau_high=0.35,
-        max_requests_per_batch=128,
-        max_tokens=max_tokens,
-    )
-    print(f"[SIZE-AIMD-ADV-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_adv_prepack:.4f}s")
+    # # 8. TEST：advanced size-based AIMD batching (EWMA + hysteresis on TTFT_p95) (haven't tested)
+    # avg_ttft_size_aimd_adv_prepack = simulate_size_aimd_wait_advanced(
+    #     records,
+    #     model,
+    #     tokenizer,
+    #     device,
+    #     init_size=64,
+    #     min_size=4,
+    #     max_size=128,
+    #     method="prepacking",
+    #     alpha=10,
+    #     beta=0.5,
+    #     gamma=0.1,
+    #     tau_low=0.25,
+    #     tau_high=0.35,
+    #     max_requests_per_batch=128,
+    #     max_tokens=max_tokens,
+    # )
+    # print(f"[SIZE-AIMD-ADV-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_adv_prepack:.4f}s")
