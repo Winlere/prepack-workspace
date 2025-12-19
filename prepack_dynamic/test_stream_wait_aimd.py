@@ -966,6 +966,23 @@ if __name__ == "__main__":
     )
     print(f"[SIZE-AIMD-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_prepack:.4f}s")
 
+    avg_ttft_size_aimd_prepack_dp = simulate_size_aimd_wait(
+        records,
+        model,
+        tokenizer,
+        device,
+        init_size=4,     # initial desired batch size
+        min_size=1,
+        max_size=16,
+        method="prepacking",
+        alpha=10,        # additive increase step
+        beta=0.5,         # multiplicative decrease factor
+        max_requests_per_batch=128,
+        max_tokens=max_tokens,
+        use_ilp_packing=True, # False for greedy, True for ip/dp
+    )
+    print(f"[SIZE-AIMD-PREPACK-DP] avg per-input TTFT={avg_ttft_size_aimd_prepack_dp:.4f}s")
+
     # # 8. TEST：advanced size-based AIMD batching (EWMA + hysteresis on TTFT_p95) (haven't tested)
     # avg_ttft_size_aimd_adv_prepack = simulate_size_aimd_wait_advanced(
     #     records,
