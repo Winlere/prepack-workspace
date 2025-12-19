@@ -4,6 +4,7 @@ from typing import List, Dict
 
 import numpy as np
 import torch
+import sys
 
 from utils import load_model_and_tokenizer, integer_program_packing, LAST_ILP_SOLVE_TIME
 from processor import PrePackProcessor
@@ -948,6 +949,8 @@ if __name__ == "__main__":
     )
     print(f"[FIRST-THEN-0-PREPACK] avg per-input TTFT={avg_ttft_first_then_zero:.4f}s")
 
+    sys.stdout.flush()
+
     # 7. TEST：size-based AIMD batching (dynamic batch size by count)
     avg_ttft_size_aimd_prepack = simulate_size_aimd_wait(
         records,
@@ -965,6 +968,8 @@ if __name__ == "__main__":
         use_ilp_packing=False, # False for greedy, True for ip/dp
     )
     print(f"[SIZE-AIMD-PREPACK] avg per-input TTFT={avg_ttft_size_aimd_prepack:.4f}s")
+
+    sys.stdout.flush()
 
     avg_ttft_size_aimd_prepack_dp = simulate_size_aimd_wait(
         records,

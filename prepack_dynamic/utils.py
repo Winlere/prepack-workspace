@@ -200,7 +200,7 @@ def integer_program_packing(length_dict, max_bin_size):
     solve_time = time.time() - t0
     LAST_ILP_SOLVE_TIME = solve_time
 
-    if status == pywraplp.Solver.OPTIMAL:
+    if status == pywraplp.Solver.OPTIMAL or status == pywraplp.Solver.FEASIBLE:
         result = []
         for j in data["bins"]:
             if y[j].solution_value() == 1:
@@ -214,9 +214,11 @@ def integer_program_packing(length_dict, max_bin_size):
             f"[ILP-PACK] n_items={len(data['items'])}, "
             f"max_bin_size={max_bin_size}, "
             f"solve_time={solve_time:.6f}s"
-        )
+        )    
+    elif status == pywraplp.Solver.INFEASIBLE:
+        raise Exception("The problem is infeasible.")
     else:
-        raise ("The problem does not have an optimal solution.")
+        raise Exception("The problem does not have a valid solution.")
 
     return result
 
