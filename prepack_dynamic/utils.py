@@ -7,7 +7,8 @@ from ortools.linear_solver import pywraplp
 import binpacking
 from transformers import AutoTokenizer
 from model import CustomCausalLlamaModel, CustomCausalMistralModel
-
+import time
+from typing import Dict, List, Hashable, Tuple
 
 # 记录最近一次 ILP 求解时间（秒），便于在模拟中做 CPU/GPU overlap
 LAST_ILP_SOLVE_TIME: float = 0.0
@@ -79,6 +80,7 @@ def _solve_prefix_bin_packing_ilp(
 
     # Optional objective: minimize number of used bins (not strictly required
     # for feasibility, but helps produce compact packings).
+    solver.SetNumThreads(8)
     solver.Minimize(solver.Sum([y[b] for b in bins]))
 
     status = solver.Solve()
@@ -165,61 +167,111 @@ def prefix_ilp_packing(
     return greedy_packing(length_dict, max_bin_size)
 
 
-# https://developers.google.com/optimization/pack/bin_packing
-def integer_program_packing(length_dict, max_bin_size):
+def _knapsack_pick(items: List[Tuple[Hashable, int]], cap: int) -> List[Hashable]:
+    """
+    0/1 knapsack DP to maximize used capacity <= cap.
+    Returns the chosen item ids.
+    items: [(item_id, weight_int), ...]
+    """
+    # dp[w] = best total used capacity achievable with capacity w (or -1 if unreachable)
+    # parent[w] = (prev_w, picked_index) to reconstruct
+    dp = [-1] * (cap + 1)
+    parent = [None] * (cap + 1)
+
+    dp[0] = 0
+    for idx, (_iid, wt) in enumerate(items):
+        if wt > cap:
+            continue
+        # iterate backwards for 0/1
+        for w in range(cap, wt - 1, -1):
+            if dp[w - wt] >= 0:
+                cand = dp[w - wt] + wt
+                if cand > dp[w]:
+                    dp[w] = cand
+                    parent[w] = (w - wt, idx)
+
+    # find best w with maximum dp[w]
+    best_w = max(range(cap + 1), key=lambda w: dp[w])
+    if dp[best_w] <= 0:
+        return []
+
+    chosen = []
+    w = best_w
+    while w != 0 and parent[w] is not None:
+        prev_w, idx = parent[w]
+        chosen.append(items[idx][0])
+        w = prev_w
+    return chosen
+
+
+def integer_program_packing(length_dict: Dict[Hashable, int], max_bin_size: int) -> List[Dict[Hashable, int]]:
+    """
+    DP-based bin packing (no solver):
+    Repeatedly solves a 0/1 knapsack to fill one bin as much as possible, removes chosen items, repeats.
+
+    Returns: List[bin_dict], where bin_dict maps item_id -> weight
+    """
     global LAST_ILP_SOLVE_TIME
     t0 = time.time()
 
-    data = {}
-    data["items"] = list(length_dict.keys())
-    data["weights"] = list(length_dict.values())
-    data["bins"] = data["items"]
-    data["bin_capacity"] = max_bin_size
+    if max_bin_size <= 0:
+        raise ValueError("max_bin_size must be positive")
 
-    solver = pywraplp.Solver.CreateSolver("SCIP")
+    # Validate and normalize weights
+    items = []
+    for k, v in length_dict.items():
+        if v is None:
+            raise ValueError(f"Item {k} has None weight")
+        if v < 0:
+            raise ValueError(f"Item {k} has negative weight {v}")
+        if v == 0:
+            # You can choose to drop or pack zeros arbitrarily; we pack them into the first bin later.
+            pass
+        items.append((k, int(v)))
 
-    if not solver:
-        return
-    x = {}
-    for i in data["items"]:
-        for j in data["bins"]:
-            x[(i, j)] = solver.IntVar(0, 1, "x_%i_%i" % (i, j))
-    y = {}
-    for j in data["bins"]:
-        y[j] = solver.IntVar(0, 1, "y[%i]" % j)
+    # Quick fail if any item exceeds capacity (matches typical bin packing assumption)
+    too_big = [k for k, w in items if w > max_bin_size]
+    if too_big:
+        raise ValueError(f"Items exceed bin capacity {max_bin_size}: {too_big[:10]}{'...' if len(too_big) > 10 else ''}")
 
-    for i in data["items"]:
-        solver.Add(sum(x[i, j] for j in data["bins"]) == 1)
+    # Sort by weight descending so DP sees larger items earlier (often improves packing quality)
+    remaining = sorted(items, key=lambda x: x[1], reverse=True)
 
-    for j in data["bins"]:
-        solver.Add(sum(x[(i, j)] * data["weights"][i] for i in data["items"]) <= y[j] * data["bin_capacity"])
+    result: List[Dict[Hashable, int]] = []
 
-    solver.Minimize(solver.Sum([y[j] for j in data["bins"]]))
+    # Handle zero-weight items: pack them at the end into the first bin if exists, else a new bin
+    zero_items = [iid for iid, w in remaining if w == 0]
+    remaining = [(iid, w) for iid, w in remaining if w > 0]
 
-    status = solver.Solve()
+    while remaining:
+        chosen_ids = _knapsack_pick(remaining, max_bin_size)
+
+        # Fallback (should rarely happen) if DP returns empty but remaining non-empty
+        if not chosen_ids:
+            iid, w = remaining[0]
+            chosen_ids = [iid]
+
+        chosen_set = set(chosen_ids)
+        bin_dict = {iid: w for iid, w in remaining if iid in chosen_set}
+        result.append(bin_dict)
+
+        # Remove chosen
+        remaining = [(iid, w) for iid, w in remaining if iid not in chosen_set]
+
+    # Place zero-weight items
+    if zero_items:
+        if not result:
+            result.append({})
+        for iid in zero_items:
+            result[0][iid] = 0
+
     solve_time = time.time() - t0
     LAST_ILP_SOLVE_TIME = solve_time
-
-    if status == pywraplp.Solver.OPTIMAL or status == pywraplp.Solver.FEASIBLE:
-        result = []
-        for j in data["bins"]:
-            if y[j].solution_value() == 1:
-                bin_dict = {}
-                for i in data["items"]:
-                    if x[i, j].solution_value() > 0:
-                        bin_dict[i] = data["weights"][i]
-                result.append(bin_dict)
-        # 打印 ILP 求解时间以及本次打包的规模，方便和 TTFT 对比
-        print(
-            f"[ILP-PACK] n_items={len(data['items'])}, "
-            f"max_bin_size={max_bin_size}, "
-            f"solve_time={solve_time:.6f}s"
-        )    
-    elif status == pywraplp.Solver.INFEASIBLE:
-        raise Exception("The problem is infeasible.")
-    else:
-        raise Exception("The problem does not have a valid solution.")
-
+    print(
+        f"[DP-PACK] n_items={len(length_dict)}, "
+        f"max_bin_size={max_bin_size}, "
+        f"solve_time={solve_time:.6f}s"
+    )
     return result
 
 
