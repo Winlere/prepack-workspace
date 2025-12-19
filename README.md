@@ -28,3 +28,6 @@ Remaining argument: /u/wzhan/prepack-workspace/dataset/combined/mmlu_azure_ts.cs
 Output path: /u/wzhan/prepack-workspace/assets/raw_log/ONE_CLICK_A100/mmlu_azure_ts.txt    
 Remaining argument: /u/wzhan/prepack-workspace/dataset/combined/mmlu_azure_ts_scaled.csv   
 Output path: /u/wzhan/prepack-workspace/assets/raw_log/ONE_CLICK_A100/mmlu_azure_ts_scaled.txt                                                                    ```
+
+
+We also attach the raw experiment log under `assets/raw_logs/ONE_CLICK/`
