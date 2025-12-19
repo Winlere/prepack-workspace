@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/u/wzhan/prepack-workspace/prepack_dynamic/test_stream_wait_aimd.py", line 9, in <module>
+    from utils import load_model_and_tokenizer, integer_program_packing, LAST_ILP_SOLVE_TIME
+  File "/u/wzhan/prepack-workspace/prepack_dynamic/utils.py", line 169, in <module>
+    def _knapsack_pick(items: List[Tuple[Hashable, int]], cap: int) -> List[Hashable]:
+NameError: name 'Hashable' is not defined

@@ -1,0 +1,76 @@
+The `load_in_4bit` and `load_in_8bit` arguments are deprecated and will be removed in the future versions. Please, pass a `BitsAndBytesConfig` object in `quantization_config` argument instead.
+`low_cpu_mem_usage` was None, now set to True since model is quantized.
+/u/wzhan/.conda/envs/prepack/lib/python3.9/site-packages/torch/_utils.py:776: UserWarning: TypedStorage is deprecated. It will be removed in the future and UntypedStorage will be the only storage class. This should only matter to you if you are using storages directly.  To access UntypedStorage directly, use tensor.untyped_storage() instead of tensor.storage()
+  return self.fget.__get__(instance, owner)()
+You are calling `save_pretrained` to a 4-bit converted model, but your `bitsandbytes` version doesn't support it. If you want to save 4-bit models, make sure to have `bitsandbytes>=0.41.3` installed.
+/u/wzhan/.conda/envs/prepack/lib/python3.9/site-packages/bitsandbytes/nn/modules.py:224: UserWarning: Input type into Linear4bit is torch.float16, but bnb_4bit_compute_type=torch.float32 (default). This will lead to slow inference or training speed.
+  warnings.warn(f'Input type into Linear4bit is torch.float16, but bnb_4bit_compute_type=torch.float32 (default). This will lead to slow inference or training speed.')
+Loaded 627 records from /u/wzhan/prepack-workspace/dataset/realdata_downsample/sampled.0.csv
+[FIRST-THEN-0] batch=1, wait_window=0.2000s, num_requests=2
+[FIRST-THEN-0] batch=2, wait_window=0.0000s, num_requests=10
+[FIRST-THEN-0] batch=3, wait_window=0.0000s, num_requests=24
+[FIRST-THEN-0] batch=4, wait_window=0.0000s, num_requests=24
+[FIRST-THEN-0] batch=5, wait_window=0.0000s, num_requests=26
+[FIRST-THEN-0] batch=6, wait_window=0.0000s, num_requests=24
+[FIRST-THEN-0] batch=7, wait_window=0.0000s, num_requests=25
+[FIRST-THEN-0] batch=8, wait_window=0.0000s, num_requests=24
+[FIRST-THEN-0] batch=9, wait_window=0.0000s, num_requests=30
+[FIRST-THEN-0] batch=10, wait_window=0.0000s, num_requests=29
+[FIRST-THEN-0] batch=11, wait_window=0.0000s, num_requests=27
+[FIRST-THEN-0] batch=12, wait_window=0.0000s, num_requests=28
+[FIRST-THEN-0] batch=13, wait_window=0.0000s, num_requests=28
+[FIRST-THEN-0] batch=14, wait_window=0.0000s, num_requests=26
+[FIRST-THEN-0] batch=15, wait_window=0.0000s, num_requests=28
+[FIRST-THEN-0] batch=16, wait_window=0.0000s, num_requests=28
+[FIRST-THEN-0] batch=17, wait_window=0.0000s, num_requests=29
+[FIRST-THEN-0] batch=18, wait_window=0.0000s, num_requests=27
+[FIRST-THEN-0] batch=19, wait_window=0.0000s, num_requests=28
+[FIRST-THEN-0] batch=20, wait_window=0.0000s, num_requests=28
+[FIRST-THEN-0] batch=21, wait_window=0.0000s, num_requests=30
+[FIRST-THEN-0] batch=22, wait_window=0.0000s, num_requests=30
+[FIRST-THEN-0] batch=23, wait_window=0.0000s, num_requests=29
+[FIRST-THEN-0] batch=24, wait_window=0.0000s, num_requests=24
+[FIRST-THEN-0] batch=25, wait_window=0.0000s, num_requests=19
+[FIRST-THEN-0-PREPACK] avg per-input TTFT=49.6841s
+[SIZE-AIMD] batch=1, desired_size=4, backlog_before=1, actual_batch_size=1
+[SIZE-AIMD] batch=2, desired_size=14, backlog_before=13, actual_batch_size=13
+[SIZE-AIMD] batch=3, desired_size=16, backlog_before=32, actual_batch_size=16
+[SIZE-AIMD] batch=4, desired_size=16, backlog_before=65, actual_batch_size=16
+[SIZE-AIMD] batch=5, desired_size=16, backlog_before=94, actual_batch_size=16
+[SIZE-AIMD] batch=6, desired_size=16, backlog_before=118, actual_batch_size=16
+[SIZE-AIMD] batch=7, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=8, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=9, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=10, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=11, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=12, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=13, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=14, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=15, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=16, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=17, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=18, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=19, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=20, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=21, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=22, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=23, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=24, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=25, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=26, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=27, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=28, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=29, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=30, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=31, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=32, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=33, desired_size=16, backlog_before=128, actual_batch_size=16
+[SIZE-AIMD] batch=34, desired_size=16, backlog_before=117, actual_batch_size=16
+[SIZE-AIMD] batch=35, desired_size=16, backlog_before=101, actual_batch_size=16
+[SIZE-AIMD] batch=36, desired_size=16, backlog_before=85, actual_batch_size=16
+[SIZE-AIMD] batch=37, desired_size=16, backlog_before=69, actual_batch_size=16
+[SIZE-AIMD] batch=38, desired_size=16, backlog_before=53, actual_batch_size=16
+[SIZE-AIMD] batch=39, desired_size=16, backlog_before=37, actual_batch_size=16
+[SIZE-AIMD] batch=40, desired_size=16, backlog_before=21, actual_batch_size=16
+[SIZE-AIMD] batch=41, desired_size=8, backlog_before=5, actual_batch_size=5
+[SIZE-AIMD-PREPACK] avg per-input TTFT=50.0070s
