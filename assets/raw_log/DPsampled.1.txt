@@ -72,3 +72,86 @@ Loaded 589 records from /u/wzhan/prepack-workspace/dataset/realdata_downsample/s
 [SIZE-AIMD] batch=39, desired_size=16, backlog_before=17, actual_batch_size=16
 [SIZE-AIMD] batch=40, desired_size=8, backlog_before=1, actual_batch_size=1
 [SIZE-AIMD-PREPACK] avg per-input TTFT=36.3314s
+[SIZE-AIMD] batch=1, desired_size=4, backlog_before=1, actual_batch_size=1
+[DP-PACK] n_items=1, max_bin_size=852, solve_time=0.000085s
+[SIZE-AIMD] batch=2, desired_size=14, backlog_before=8, actual_batch_size=8
+[DP-PACK] n_items=8, max_bin_size=933, solve_time=0.000920s
+[SIZE-AIMD] batch=3, desired_size=7, backlog_before=12, actual_batch_size=7
+[DP-PACK] n_items=7, max_bin_size=1271, solve_time=0.001194s
+[SIZE-AIMD] batch=4, desired_size=16, backlog_before=31, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1124, solve_time=0.003189s
+[SIZE-AIMD] batch=5, desired_size=16, backlog_before=58, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1300, solve_time=0.003828s
+[SIZE-AIMD] batch=6, desired_size=16, backlog_before=86, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1273, solve_time=0.003650s
+[SIZE-AIMD] batch=7, desired_size=16, backlog_before=97, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1343, solve_time=0.003612s
+[SIZE-AIMD] batch=8, desired_size=16, backlog_before=116, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1396, solve_time=0.004215s
+[SIZE-AIMD] batch=9, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1311, solve_time=0.004301s
+[SIZE-AIMD] batch=10, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1381, solve_time=0.004107s
+[SIZE-AIMD] batch=11, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1162, solve_time=0.003487s
+[SIZE-AIMD] batch=12, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1274, solve_time=0.003578s
+[SIZE-AIMD] batch=13, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=935, solve_time=0.002898s
+[SIZE-AIMD] batch=14, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1439, solve_time=0.003772s
+[SIZE-AIMD] batch=15, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1166, solve_time=0.003074s
+[SIZE-AIMD] batch=16, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1320, solve_time=0.003598s
+[SIZE-AIMD] batch=17, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1415, solve_time=0.004101s
+[SIZE-AIMD] batch=18, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1239, solve_time=0.003838s
+[SIZE-AIMD] batch=19, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1453, solve_time=0.004071s
+[SIZE-AIMD] batch=20, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1460, solve_time=0.004490s
+[SIZE-AIMD] batch=21, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1284, solve_time=0.003547s
+[SIZE-AIMD] batch=22, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1252, solve_time=0.003787s
+[SIZE-AIMD] batch=23, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1446, solve_time=0.004086s
+[SIZE-AIMD] batch=24, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1325, solve_time=0.003862s
+[SIZE-AIMD] batch=25, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1453, solve_time=0.004450s
+[SIZE-AIMD] batch=26, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1142, solve_time=0.003530s
+[SIZE-AIMD] batch=27, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1228, solve_time=0.003258s
+[SIZE-AIMD] batch=28, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1423, solve_time=0.004203s
+[SIZE-AIMD] batch=29, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1471, solve_time=0.004553s
+[SIZE-AIMD] batch=30, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1473, solve_time=0.004152s
+[SIZE-AIMD] batch=31, desired_size=16, backlog_before=128, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1306, solve_time=0.003588s
+[SIZE-AIMD] batch=32, desired_size=16, backlog_before=125, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1383, solve_time=0.003895s
+[SIZE-AIMD] batch=33, desired_size=16, backlog_before=109, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1406, solve_time=0.003976s
+[SIZE-AIMD] batch=34, desired_size=16, backlog_before=93, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1259, solve_time=0.003619s
+[SIZE-AIMD] batch=35, desired_size=16, backlog_before=77, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=976, solve_time=0.002821s
+[SIZE-AIMD] batch=36, desired_size=16, backlog_before=61, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1067, solve_time=0.003119s
+[SIZE-AIMD] batch=37, desired_size=16, backlog_before=45, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1256, solve_time=0.003617s
+[SIZE-AIMD] batch=38, desired_size=16, backlog_before=29, actual_batch_size=16
+[DP-PACK] n_items=16, max_bin_size=1417, solve_time=0.004006s
+[SIZE-AIMD] batch=39, desired_size=8, backlog_before=13, actual_batch_size=8
+[DP-PACK] n_items=8, max_bin_size=1309, solve_time=0.001382s
+[SIZE-AIMD] batch=40, desired_size=4, backlog_before=5, actual_batch_size=4
+[DP-PACK] n_items=4, max_bin_size=833, solve_time=0.000283s
+[SIZE-AIMD] batch=41, desired_size=2, backlog_before=1, actual_batch_size=1
+[DP-PACK] n_items=1, max_bin_size=838, solve_time=0.000080s
+[SIZE-AIMD-PREPACK-DP] avg per-input TTFT=41.4878s
