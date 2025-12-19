@@ -923,17 +923,17 @@ if __name__ == "__main__":
     #     method="prepacking",
     # )
     # print(f"[SIZE-10-PREPACK] avg per-input TTFT={avg_ttft_size10_prepack:.4f}s")
-    # avg_ttft_first_then_zero_baseline = simulate_first_wait_then_zero_wait(
-    #     records,
-    #     model,
-    #     tokenizer,
-    #     device,
-    #     first_wait_window=0.2,
-    #     method="baseline",
-    #     max_requests_per_batch=max_requests_per_batch,
-    #     max_tokens=max_tokens,
-    # )
-    # print(f"[FIRST-THEN-0-BASELINE] avg per-input TTFT={avg_ttft_first_then_zero_baseline:.4f}s")
+    avg_ttft_first_then_zero_baseline = simulate_first_wait_then_zero_wait(
+        records,
+        model,
+        tokenizer,
+        device,
+        first_wait_window=0.2,
+        method="baseline",
+        max_requests_per_batch=max_requests_per_batch,
+        max_tokens=max_tokens,
+    )
+    print(f"[FIRST-THEN-0-BASELINE] avg per-input TTFT={avg_ttft_first_then_zero_baseline:.4f}s")
     # # 6. TEST：first batch wait=0.2s, then wait_window=0s
     avg_ttft_first_then_zero = simulate_first_wait_then_zero_wait(
         records,
