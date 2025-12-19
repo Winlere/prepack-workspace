@@ -6,7 +6,7 @@ echo "Usage: $0 output_prefix xxx.csv yyy.csv ..."
 output_prefix="$1"
 shift
 
-NUM_GPUS=4   # set this
+NUM_GPUS=$(nvidia-smi -L | wc -l)   # set this
 gpu=0
 count=0
 
